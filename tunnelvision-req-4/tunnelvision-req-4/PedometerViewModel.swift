@@ -1,7 +1,7 @@
 //
 //  PedometerViewModel.swift
 //  tunnelvision-req-4
-//
+//  Started by Alain Welliver on 4/1/26. Completed using AI assistnace with Claude Code's Claude 4.5 Sonnet
 
 import Foundation
 import Combine
