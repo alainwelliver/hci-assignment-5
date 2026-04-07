@@ -2,6 +2,27 @@
 CIS 4120 HCI Assignment 5 - Alain, Tomas, and Ben
 
 ## Where to find/run each technical implementation prototype:
+
+### Technical Requirement 1: "Hello World" App
+#### How to find:
+* Navigate to the `tunnelvision-req-1` folder in this repo.
+* Main implementation file is `HelloWorldView.swift` which renders the one-screen greeting.
+
+#### How to run:
+* Open `tunnelvision-req-1/tunnelvision-req-1.xcodeproj` in Xcode.
+* Select an **iOS Simulator** as the run destination.
+* Build and run (play button). You should see the "Hello World" text rendered cleanly on the center of the screen.
+
+### Technical Requirement 2: "Hello Styles" (Style Guide)
+#### How to find:
+* Navigate to the `tunnelvision-req-2` folder in this repo.
+* Main implementation file is `HelloStylesView.swift`  which programmatically renders our Hero UI color hexes, typography fallbacks, and SF Symbol icons.
+
+#### How to run:
+* Open `tunnelvision-req-2/tunnelvision-req-2.xcodeproj` in Xcode.
+* Select an **iOS Simulator** as the run destination.
+* Build and run (play button). The simulator will display a scrollable view of the full TunnelVision style guide.
+
 ### Technical Requirement 3: AR Camera Overlay (2D HUD on Live Camera)
 #### How to find:
 * Navigate to the `tunnelvision-req-3` folder in this repo.
@@ -12,6 +33,17 @@ CIS 4120 HCI Assignment 5 - Alain, Tomas, and Ben
 * Select a **physical iPhone** as the run destination (a real camera feed is required for this prototype; Simulator is not sufficient for a meaningful demo).
 * Build and run (play button). When prompted, allow **Camera** and **Motion** access.
 * You should see the live camera feed with green directional arrows and floating info cards (train / time). The direction cluster uses counter-rotation and counter-parallax relative to device motion so it stays visually steadier than the feed; the top train banner and bottom cards stay fixed in screen space.
+
+### Technical Requirement 5: Real-time Transit Data API (Mocked for UI Testing)
+#### How to find:
+* Navigate to the `tunnelvision-req-5` folder in this repo.
+* Main implementation files are `TransitModels.swift` (data structures), `TransitAPIService.swift` (mock API simulating network latency and random delays), `TransitViewModel.swift` (handles the 1-second ticking clock and missed train state), and `ContentView.swift` (the pill-shaped UI card).
+
+#### How to run:
+* Open `tunnelvision-req-5/tunnelvision-req-5.xcodeproj` in Xcode.
+* Select an **iOS Simulator** as the run destination.
+* Build and run (play button). 
+* You will initially see a loading spinner to simulate network fetch. Once loaded, the "Next train" pill appears at the top of the screen. If you leave the simulator running for 15 seconds, you can watch the timer tick down to 0:00, trigger a native iOS alert that the train departed, and automatically animate the next delayed (delayed by 80% chance to show it) train into the UI.
 
 ### Technical Requirement 6: Step-by-Step 2D Navigation Mode
 #### How to find:
