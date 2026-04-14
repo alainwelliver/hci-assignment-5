@@ -11,7 +11,7 @@ import SwiftUI
 struct TunnelVisionApp: App {
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            SearchNavigationView() //changed this alain to run the screen i designed
         }
     }
 }
