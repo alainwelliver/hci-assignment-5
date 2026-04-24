@@ -207,27 +207,29 @@ struct Navigation2DView: View {
 #if os(iOS)
         .onAppear {
             motion.start()
-            headingAttitude.configure(route: navigationVM.activeRoute)
-            headingAttitude.resetSession()
-            headingAttitude.update(legIndex: navigationVM.currentStepIndex, deviceHeading: motion.magneticHeadingDegrees)
+            if let h = motion.magneticHeadingDegrees {
+                navigationVM.seedLegAxisIfNeeded(h)
+            }
+            headingAttitude.update(axisHeading: navigationVM.legAxisHeadingDegrees,
+                                   deviceHeading: motion.magneticHeadingDegrees)
         }
         .onDisappear {
             motion.stop()
         }
-        .onChange(of: navigationVM.activeRoute?.id) { _, _ in
-            headingAttitude.configure(route: navigationVM.activeRoute)
-            headingAttitude.resetSession()
-            headingAttitude.update(legIndex: navigationVM.currentStepIndex, deviceHeading: motion.magneticHeadingDegrees)
-        }
-        .onChange(of: navigationVM.currentStepIndex) { _, newIndex in
-            // Fresh trip / "Restart" sets step 0 and step count 0; capture a new forward heading.
-            if newIndex == 0, navigationVM.stepCount == 0 {
-                headingAttitude.resetSession()
-            }
-            headingAttitude.update(legIndex: newIndex, deviceHeading: motion.magneticHeadingDegrees)
+        .onChange(of: navigationVM.currentStepIndex) { _, _ in
+            headingAttitude.update(axisHeading: navigationVM.legAxisHeadingDegrees,
+                                   deviceHeading: motion.magneticHeadingDegrees)
         }
         .onChange(of: motion.magneticHeadingDegrees) { _, newHeading in
-            headingAttitude.update(legIndex: navigationVM.currentStepIndex, deviceHeading: newHeading)
+            if let newHeading {
+                navigationVM.seedLegAxisIfNeeded(newHeading)
+            }
+            headingAttitude.update(axisHeading: navigationVM.legAxisHeadingDegrees,
+                                   deviceHeading: newHeading)
+        }
+        .onChange(of: navigationVM.legAxisHeadingDegrees) { _, _ in
+            headingAttitude.update(axisHeading: navigationVM.legAxisHeadingDegrees,
+                                   deviceHeading: motion.magneticHeadingDegrees)
         }
 #endif
         .onChange(of: isOverstepped) { overstepped in

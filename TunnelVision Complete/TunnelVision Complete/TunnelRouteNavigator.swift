@@ -65,12 +65,11 @@ final class TunnelRouteNavigator: NSObject, ObservableObject {
     private var legDistances: [Double] = []
     private var routeWaypoints: [Waypoint] = []
 
-    // Heading axis used as the rotation reference for the *current* leg. We
-    // snap this to the user's physical heading each time a leg advances, so
-    // every new leg treats "forward" as wherever the user is now pointing
-    // (i.e. the relative axis the user just walked into after their last
-    // turn), rather than a fixed initial compass bearing.
-    private var currentAxisHeadingDegrees: Double?
+    // Heading axis used as the rotation reference for the *current* leg lives
+    // on NavigationViewModel (see `legAxisHeadingDegrees`). Sharing it there
+    // lets the rotation survive 2D ↔ AR mode switches: the @StateObject that
+    // owned the axis locally was being torn down on view unmount, which
+    // caused the arrow to snap back to its baseline orientation mid-turn.
 
     private var distanceWalkedThisLeg: Double = 0
     private var deviceHeadingDegrees: Double?
@@ -92,7 +91,6 @@ final class TunnelRouteNavigator: NSObject, ObservableObject {
         self.tracker = tracker
         arrived = false
         distanceWalkedThisLeg = 0
-        currentAxisHeadingDegrees = nil
 
         syncFromViewModel()
         updateDistanceToWaypoint()
@@ -115,20 +113,19 @@ final class TunnelRouteNavigator: NSObject, ObservableObject {
         stepObserver?.cancel()
         stepObserver = nil
         tracker = nil
-        currentAxisHeadingDegrees = nil
     }
 
     func updateDeviceHeadingDegrees(_ degrees: Double?) {
         deviceHeadingDegrees = degrees
-        if currentAxisHeadingDegrees == nil, let degrees {
-            currentAxisHeadingDegrees = degrees
+        if let degrees {
+            navigationViewModel?.seedLegAxisIfNeeded(degrees)
         }
         recomputeUI()
     }
 
     private func refreshAxisToCurrentHeading() {
         if let heading = deviceHeadingDegrees {
-            currentAxisHeadingDegrees = heading
+            navigationViewModel?.legAxisHeadingDegrees = heading
         }
     }
 
@@ -205,7 +202,7 @@ final class TunnelRouteNavigator: NSObject, ObservableObject {
     // natural orientation relative to the axis the user is currently walking,
     // and subsequent physical rotation is what drives the arrow to follow.
     private func currentTargetBearing() -> Double? {
-        currentAxisHeadingDegrees
+        navigationViewModel?.legAxisHeadingDegrees
     }
 
     private func updateDistanceToWaypoint() {
@@ -265,7 +262,10 @@ final class TunnelRouteNavigator: NSObject, ObservableObject {
             if clamped < -90 { clamped = -90 }
             arrowRotationDegrees = clamped
         } else {
-            arrowRotationDegrees = 0
+            // Hold the previously-computed arrowRotationDegrees. Zeroing here
+            // would snap the arrow to its baseline orientation during the
+            // brief startup gap after a mode switch, before the restarted
+            // motion overlay has delivered its first heading sample.
             isWrongDirection = false
         }
 
