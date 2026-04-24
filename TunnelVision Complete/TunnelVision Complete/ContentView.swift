@@ -7,10 +7,19 @@ struct ContentView: View {
     @EnvironmentObject var transitVM: TransitViewModel
 
     var body: some View {
-        if navigationVM.showLanding {
-            LandingView()
-        } else {
-            CustomTabView()
+        CustomTabView()
+    }
+}
+
+// MARK: - Home Tab
+
+struct HomeTabView: View {
+    @EnvironmentObject var navigationVM: NavigationViewModel
+
+    var body: some View {
+        switch navigationVM.homeStep {
+        case .landing: LandingView()
+        case .search:  SearchView()
         }
     }
 }
@@ -39,10 +48,10 @@ struct CustomTabView: View {
         // Content pane — only the active tab is rendered, preserving onAppear semantics
         Group {
             switch navigationVM.selectedTab {
-            case 0:  SearchView()
+            case 0:  HomeTabView()
             case 1:  NavigationContainerView()
             case 2:  SettingsView()
-            default: SearchView()
+            default: HomeTabView()
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

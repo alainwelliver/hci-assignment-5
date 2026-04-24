@@ -31,6 +31,9 @@ struct LandingView: View {
                 searchBarSection
                     .padding(.top, isSearchFocused ? 60 : 28)
 
+                manualRouteCTA
+                    .padding(.top, 14)
+
                 if isSearchFocused {
                     searchResultsList
                         .transition(.opacity.combined(with: .move(edge: .bottom)))
@@ -105,6 +108,28 @@ struct LandingView: View {
         )
     }
 
+    // MARK: - Manual CTA
+
+    private var manualRouteCTA: some View {
+        Button {
+            navigationVM.openManualSearch()
+        } label: {
+            HStack(spacing: 6) {
+                Text("Or set your own route")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundColor(Color(hex: "#555566"))
+                Image(systemName: "arrow.right")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(Color(hex: "#17c964"))
+            }
+            .padding(.vertical, 8)
+            .padding(.horizontal, 14)
+            .background(Color.white.opacity(0.6))
+            .cornerRadius(20)
+        }
+        .buttonStyle(.plain)
+    }
+
     // MARK: - Results
 
     private var searchResultsList: some View {
@@ -122,7 +147,7 @@ struct LandingView: View {
                 } else {
                     ForEach(filteredStations) { station in
                         Button {
-                            navigationVM.startFromLanding(destination: station)
+                            navigationVM.openSearchWithDestination(station)
                         } label: {
                             HStack(spacing: 14) {
                                 Image(systemName: "mappin.circle.fill")

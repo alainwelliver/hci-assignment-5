@@ -8,16 +8,15 @@ import UIKit
 @MainActor
 final class NavigationViewModel: ObservableObject {
 
-    // Landing page
-    @Published var showLanding: Bool = true
+    // Home tab sub-step: landing page vs. manual from/to search + route options
+    enum HomeStep { case landing, search }
+    @Published var homeStep: HomeStep = .landing
 
-    // Trip overview (route card + start button before active navigation)
-    @Published var showTripOverview: Bool = false
-
-    // Pre-fill for SearchView when coming from landing "Starting from" button
+    // Pre-fills for SearchView when opened from landing flows
     @Published var prefillStart: Station? = nil
+    @Published var prefillDest: Station? = nil
 
-    // Signal SearchView to focus the FROM field (used when user taps "Change" on landing)
+    // Signal SearchView to focus the FROM field on appear (manual CTA flow)
     @Published var focusFromFieldOnAppear: Bool = false
 
     // Tab selection
@@ -97,8 +96,6 @@ final class NavigationViewModel: ObservableObject {
     func startNavigation() {
         Haptics.shared.prepareAll()
         resolveActiveRoute()
-        showLanding = false
-        showTripOverview = false
         isNavigating = true
         isARMode = false
         currentStepIndex = 0
@@ -109,35 +106,37 @@ final class NavigationViewModel: ObservableObject {
         startPedometer()
     }
 
-    func startFromLanding(destination: Station) {
-        if let originName = originForDestination[destination.name] {
-            startStation = demoStations.first { $0.name == originName }
-        } else {
-            startStation = nil
-        }
-        destStation = destination
-        prepareTrip()
-    }
-
-    func goToSearchFromLanding() {
+    func openManualSearch() {
         prefillStart = nil
+        prefillDest = nil
         focusFromFieldOnAppear = true
-        showLanding = false
+        homeStep = .search
         selectedTab = 0
     }
 
-    func prepareTrip() {
-        resolveActiveRoute()
-        showLanding = false
-        showTripOverview = true
-        selectedTab = 1
+    func openSearchWithDestination(_ destination: Station) {
+        if let originName = originForDestination[destination.name] {
+            prefillStart = demoStations.first { $0.name == originName }
+        } else {
+            prefillStart = nil
+        }
+        prefillDest = destination
+        focusFromFieldOnAppear = false
+        homeStep = .search
+        selectedTab = 0
+    }
+
+    func backToLanding() {
+        prefillStart = nil
+        prefillDest = nil
+        focusFromFieldOnAppear = false
+        homeStep = .landing
     }
 
     func reset() {
         stopPedometer()
         isNavigating = false
         isARMode = false
-        showTripOverview = false
         currentStepIndex = 0
         arrived = false
         stepCount = 0
@@ -145,8 +144,11 @@ final class NavigationViewModel: ObservableObject {
         startStation = nil
         destStation = nil
         activeRoute = nil
+        prefillStart = nil
+        prefillDest = nil
+        focusFromFieldOnAppear = false
         selectedTab = 0
-        showLanding = true
+        homeStep = .landing
     }
 
     // MARK: - 2D manual step controls

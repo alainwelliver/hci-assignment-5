@@ -26,6 +26,23 @@ struct SearchView: View {
     var body: some View {
         VStack(spacing: 0) {
 
+            // Back to landing
+            HStack {
+                Button(action: { navigationVM.backToLanding() }) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 14, weight: .semibold))
+                        Text("Home")
+                            .font(.system(size: 14, weight: .medium))
+                    }
+                    .foregroundColor(Color(hex: "#555566"))
+                }
+                .buttonStyle(.plain)
+                Spacer()
+            }
+            .padding(.horizontal)
+            .padding(.top, 12)
+
             // Header: search bars
             VStack(alignment: .leading, spacing: 12) {
 
@@ -106,22 +123,17 @@ struct SearchView: View {
         .animation(.spring(), value: startStation)
         .animation(.spring(), value: destStation)
         .onAppear {
-            if let prefill = navigationVM.prefillStart {
-                startText = prefill.name
-                startStation = prefill
+            if let ps = navigationVM.prefillStart {
+                startText = ps.name
+                startStation = ps
                 navigationVM.prefillStart = nil
-
-                if navigationVM.focusFromFieldOnAppear {
-                    navigationVM.focusFromFieldOnAppear = false
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                        activeField = .start
-                    }
-                } else {
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                        activeField = .destination
-                    }
-                }
-            } else if navigationVM.focusFromFieldOnAppear {
+            }
+            if let pd = navigationVM.prefillDest {
+                destText = pd.name
+                destStation = pd
+                navigationVM.prefillDest = nil
+            }
+            if navigationVM.focusFromFieldOnAppear {
                 navigationVM.focusFromFieldOnAppear = false
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                     activeField = .start
