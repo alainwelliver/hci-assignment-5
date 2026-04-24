@@ -2,39 +2,98 @@
 import CoreLocation
 #endif
 import Foundation
+import SwiftUI
 
 // MARK: - Demo Stations
 
 let demoStations = [
-    Station(name: "Penn Station - Platform 1"),
-    Station(name: "50th Street - Rockefeller Center"),
-    Station(name: "Times Square - 42nd St"),
-    Station(name: "AGH Lobby"),
     Station(name: "HCI Classroom"),
+    Station(name: "2nd Floor Computer Systems Lab"),
     Station(name: "AGH Ground Floor Elevators"),
+    Station(name: "2nd Floor Bathrooms"),
 ]
 
-// MARK: - Shared Waypoints (single source of truth for both 2D and AR)
-
-let sharedWaypoints: [Waypoint] = [
-    Waypoint(id: 1, name: "Start: HCI Classroom",  instruction: "Walk straight toward the door",        direction: .straight,  stepThreshold: 0),
-    Waypoint(id: 2, name: "Classroom Door",         instruction: "Turn right and walk down the hallway", direction: .turnRight,  stepThreshold: 10),
-    Waypoint(id: 3, name: "Hallway Junction",       instruction: "Turn right toward the elevators",      direction: .turnRight,  stepThreshold: 40),
-    Waypoint(id: 4, name: "Arrived: Elevators",     instruction: "You have arrived.",                    direction: .straight,   stepThreshold: 50),
+let originStationNames: Set<String> = [
+    "HCI Classroom",
+    "2nd Floor Computer Systems Lab",
 ]
 
-// MARK: - Derived Nav Steps (for 2D navigation backward compatibility)
+let destinationStationNames: Set<String> = [
+    "AGH Ground Floor Elevators",
+    "2nd Floor Bathrooms",
+]
 
-let navSteps: [NavStep] = {
-    let avgStepLength = 0.75
-    let secondsPerStep = 1.5
+// Each destination is reached from a single fixed origin in this demo.
+let originForDestination: [String: String] = [
+    "AGH Ground Floor Elevators": "HCI Classroom",
+    "2nd Floor Bathrooms": "2nd Floor Computer Systems Lab",
+]
+
+// MARK: - Route Definition
+
+struct RouteDefinition: Identifiable {
+    let id = UUID()
+    let originName: String
+    let destinationName: String
+    let waypoints: [Waypoint]
+
+    var navSteps: [NavStep] { makeNavSteps(for: waypoints) }
+    var activeWaypointCount: Int { max(0, waypoints.count - 1) }
+
+    #if os(iOS)
+    var tunnelRoute: TunnelRoute { makeTunnelRoute(from: waypoints) }
+    #endif
+}
+
+// MARK: - Route Catalog
+
+let hciToElevatorsRoute = RouteDefinition(
+    originName: "HCI Classroom",
+    destinationName: "AGH Ground Floor Elevators",
+    waypoints: [
+        Waypoint(id: 1, name: "Start: HCI Classroom",  instruction: "Walk straight toward the door",        direction: .straight,   stepThreshold: 0),
+        Waypoint(id: 2, name: "Classroom Door",         instruction: "Turn right and walk down the hallway", direction: .turnRight,  stepThreshold: 10),
+        Waypoint(id: 3, name: "Hallway Junction",       instruction: "Turn right toward the elevators",      direction: .turnRight,  stepThreshold: 40),
+        Waypoint(id: 4, name: "Arrived: Elevators",     instruction: "You have arrived.",                    direction: .straight,   stepThreshold: 50),
+    ]
+)
+
+let labToBathroomsRoute = RouteDefinition(
+    originName: "2nd Floor Computer Systems Lab",
+    destinationName: "2nd Floor Bathrooms",
+    waypoints: [
+        Waypoint(id: 1, name: "Start: 2nd Floor Computer Systems Lab", instruction: "Walk straight toward the door",  direction: .straight,  stepThreshold: 0),
+        Waypoint(id: 2, name: "Lab Door",                              instruction: "Turn right toward the hallway",  direction: .turnRight, stepThreshold: 10),
+        Waypoint(id: 3, name: "Hallway End",                           instruction: "Turn left",                      direction: .turnLeft,  stepThreshold: 70),
+        Waypoint(id: 4, name: "Arrived: 2nd Floor Bathrooms",          instruction: "You have arrived.",              direction: .straight,  stepThreshold: 75),
+    ]
+)
+
+let allRoutes: [RouteDefinition] = [
+    hciToElevatorsRoute,
+    labToBathroomsRoute,
+]
+
+func routeFor(origin: String, destination: String) -> RouteDefinition? {
+    allRoutes.first { $0.originName == origin && $0.destinationName == destination }
+}
+
+// MARK: - NavStep derivation
+
+private let avgStepLengthMeters = 0.75
+private let secondsPerStep = 1.5
+
+func makeNavSteps(for waypoints: [Waypoint]) -> [NavStep] {
+    guard waypoints.count >= 2 else { return [] }
     var steps: [NavStep] = []
-    let activeWaypoints = sharedWaypoints.dropLast()
+    let activeWaypoints = waypoints.dropLast()
+    let lastThreshold = waypoints.last!.stepThreshold
+
     for (i, wp) in activeWaypoints.enumerated() {
-        let nextThreshold = sharedWaypoints[i + 1].stepThreshold
+        let nextThreshold = waypoints[i + 1].stepThreshold
         let segmentSteps = nextThreshold - wp.stepThreshold
-        let dist = Double(segmentSteps) * avgStepLength
-        let totalRemainingSteps = sharedWaypoints.last!.stepThreshold - wp.stepThreshold
+        let dist = Double(segmentSteps) * avgStepLengthMeters
+        let totalRemainingSteps = lastThreshold - wp.stepThreshold
         let totalRemainingSec = Int(Double(totalRemainingSteps) * secondsPerStep)
         let mins = totalRemainingSec / 60
         let secs = totalRemainingSec % 60
@@ -50,21 +109,64 @@ let navSteps: [NavStep] = {
         ))
     }
     return steps
-}()
+}
 
 // MARK: - Route Timeline Generator (for search screen)
 
-func generateDemoRoute(from start: String, to destination: String) -> [RouteStep] {
-    let totalSteps = (sharedWaypoints.last?.stepThreshold ?? 50) - (sharedWaypoints.first?.stepThreshold ?? 0)
-    let walkingSeconds = Double(totalSteps) * 1.5
-    let walkingMinutes = Int(ceil(walkingSeconds / 60.0))
-    let directionCount = sharedWaypoints.count - 1
+func generateDemoRoute(for route: RouteDefinition) -> [RouteStep] {
+    let totalSteps = (route.waypoints.last?.stepThreshold ?? 50) - (route.waypoints.first?.stepThreshold ?? 0)
+    let walkingSeconds = Double(totalSteps) * secondsPerStep
+    let walkingMinutes = max(1, Int(ceil(walkingSeconds / 60.0)))
 
     return [
+        RouteStep(instruction: route.originName, subtitle: "Starting point"),
+        RouteStep(instruction: "Walking transfer", subtitle: "~\(walkingMinutes) min walking"),
+        RouteStep(instruction: route.destinationName, subtitle: "Destination"),
+    ]
+}
+
+func generateDemoRoute(from start: String, to destination: String) -> [RouteStep] {
+    if let route = routeFor(origin: start, destination: destination) {
+        return generateDemoRoute(for: route)
+    }
+    return [
         RouteStep(instruction: start, subtitle: "Starting point"),
-        RouteStep(instruction: "Navigate this transfer", subtitle: "Follow AR arrows\n~\(walkingMinutes) min walking · \(directionCount) directions"),
+        RouteStep(instruction: "Walking transfer", subtitle: nil),
         RouteStep(instruction: destination, subtitle: "Destination"),
     ]
+}
+
+// MARK: - Multiple Route Options
+
+func generateDemoRouteOptions(for route: RouteDefinition) -> [RouteOption] {
+    let totalSteps = (route.waypoints.last?.stepThreshold ?? 50) - (route.waypoints.first?.stepThreshold ?? 0)
+    let walkingSeconds = Double(totalSteps) * secondsPerStep
+    let walkingMinutes = max(1, Int(ceil(walkingSeconds / 60.0)))
+    let directionCount = route.waypoints.count - 1
+    let start = route.originName
+    let destination = route.destinationName
+
+    let walkingSubtitle = "~\(walkingMinutes) min walking"
+
+    let stepsTemplate = [
+        RouteStep(instruction: start, subtitle: "Starting point"),
+        RouteStep(instruction: "Walking transfer", subtitle: walkingSubtitle),
+        RouteStep(instruction: destination, subtitle: "Destination"),
+    ]
+
+    return [
+        RouteOption(label: "Fastest", badgeColor: Color(hex: "#17c964"), steps: stepsTemplate, durationMinutes: walkingMinutes, transfers: directionCount),
+        RouteOption(label: "Fewer Turns", badgeColor: Color(hex: "#006FEE"), steps: stepsTemplate, durationMinutes: walkingMinutes, transfers: 1),
+        RouteOption(label: "Accessible", badgeColor: Color(hex: "#f5a524"), steps: stepsTemplate, durationMinutes: walkingMinutes + 3, transfers: 2),
+    ]
+}
+
+func generateDemoRouteOptions(from start: String, to destination: String) -> [RouteOption] {
+    if let route = routeFor(origin: start, destination: destination) {
+        return generateDemoRouteOptions(for: route)
+    }
+    // Fallback: return an empty list so UI can render a "no route" state.
+    return []
 }
 
 // MARK: - TunnelRoute (for AR navigation)
@@ -100,41 +202,40 @@ struct TunnelRoute {
 }
 
 @MainActor
+func makeTunnelRoute(from waypoints: [Waypoint]) -> TunnelRoute {
+    var legs: [RouteLeg] = []
+    var runningBearing: Double = 180
+
+    for i in 0 ..< max(0, waypoints.count - 1) {
+        let wp = waypoints[i]
+        let next = waypoints[i + 1]
+        let segmentSteps = next.stepThreshold - wp.stepThreshold
+        let dist = Double(segmentSteps) * avgStepLengthMeters
+
+        switch wp.direction {
+        case .turnRight, .bearRight:  runningBearing += 90
+        case .turnLeft, .bearLeft:    runningBearing -= 90
+        default: break
+        }
+        runningBearing = runningBearing.truncatingRemainder(dividingBy: 360)
+        if runningBearing < 0 { runningBearing += 360 }
+
+        legs.append(RouteLeg(
+            bearingDegrees: runningBearing,
+            distanceMeters: dist,
+            instruction: wp.instruction
+        ))
+    }
+
+    return TunnelRoute(
+        start: CLLocationCoordinate2D(latitude: 40.75890, longitude: -73.98550),
+        legs: legs
+    )
+}
+
+@MainActor
 enum DemoRoutes {
-    private static let avgStepLength = 0.75
-
-    static let hciToElevators: TunnelRoute = {
-        let legs: [RouteLeg] = {
-            var result: [RouteLeg] = []
-            var runningBearing: Double = 180
-            for i in 0 ..< (sharedWaypoints.count - 1) {
-                let wp = sharedWaypoints[i]
-                let next = sharedWaypoints[i + 1]
-                let segmentSteps = next.stepThreshold - wp.stepThreshold
-                let dist = Double(segmentSteps) * avgStepLength
-
-                switch wp.direction {
-                case .turnRight, .bearRight:  runningBearing += 90
-                case .turnLeft, .bearLeft:    runningBearing -= 90
-                default: break
-                }
-                runningBearing = runningBearing.truncatingRemainder(dividingBy: 360)
-                if runningBearing < 0 { runningBearing += 360 }
-
-                result.append(RouteLeg(
-                    bearingDegrees: runningBearing,
-                    distanceMeters: dist,
-                    instruction: wp.instruction
-                ))
-            }
-            return result
-        }()
-
-        return TunnelRoute(
-            start: CLLocationCoordinate2D(latitude: 40.75890, longitude: -73.98550),
-            legs: legs
-        )
-    }()
+    static var hciToElevators: TunnelRoute { hciToElevatorsRoute.tunnelRoute }
 
     static let straightCorridor = TunnelRoute(
         start: CLLocationCoordinate2D(latitude: 40.75890, longitude: -73.98550),

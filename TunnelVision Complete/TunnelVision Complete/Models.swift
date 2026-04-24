@@ -48,6 +48,21 @@ struct RouteStep: Identifiable {
     let subtitle: String?
 }
 
+// MARK: - Route Option (for multiple route alternatives)
+
+struct RouteOption: Identifiable {
+    let id = UUID()
+    let label: String
+    let badgeColor: Color
+    let steps: [RouteStep]
+    let durationMinutes: Int
+    let transfers: Int
+
+    var summaryLine: String {
+        "\(durationMinutes) min · \(transfers) transfer\(transfers == 1 ? "" : "s")"
+    }
+}
+
 // MARK: - RouteLeg (from req-3 TunnelRouteNavigator)
 
 struct RouteLeg {

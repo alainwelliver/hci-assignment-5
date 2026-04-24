@@ -7,8 +7,7 @@ struct LandingView: View {
     @FocusState private var isSearchFocused: Bool
 
     private var filteredStations: [Station] {
-        let excluded: Set<String> = ["AGH Lobby", "HCI Classroom"]
-        let destinations = demoStations.filter { !excluded.contains($0.name) }
+        let destinations = demoStations.filter { destinationStationNames.contains($0.name) }
         if searchText.isEmpty { return destinations }
         return destinations.filter {
             $0.name.lowercased().contains(searchText.lowercased())
@@ -28,7 +27,7 @@ struct LandingView: View {
                 }
 
                 searchBarSection
-                    .padding(.top, isSearchFocused ? 60 : 32)
+                    .padding(.top, isSearchFocused ? 60 : 28)
 
                 if isSearchFocused {
                     searchResultsList
@@ -36,11 +35,6 @@ struct LandingView: View {
                 }
 
                 Spacer()
-
-                if !isSearchFocused {
-                    footerText
-                        .transition(.opacity)
-                }
             }
             .padding(.horizontal, 24)
         }
@@ -138,7 +132,7 @@ struct LandingView: View {
                                         .font(.system(size: 16, weight: .medium))
                                         .foregroundColor(Color(hex: "#1a1a2e"))
 
-                                    Text(station.name == "AGH Ground Floor Elevators" ? "From HCI Classroom" : "From AGH Lobby")
+                                    Text("From \(originForDestination[station.name] ?? "Unknown")")
                                         .font(.caption)
                                         .foregroundColor(Color(hex: "#555566"))
                                 }
@@ -167,29 +161,6 @@ struct LandingView: View {
         .frame(maxHeight: 340)
     }
 
-    // MARK: - Footer
-
-    private var footerText: some View {
-        Button {
-            navigationVM.goToSearchFromLanding()
-        } label: {
-            HStack(spacing: 6) {
-                Image(systemName: "location.fill")
-                    .font(.system(size: 11))
-                    .foregroundColor(Color(hex: "#17c964"))
-
-                Text("Starting from AGH Lobby")
-                    .font(.footnote.weight(.medium))
-                    .foregroundColor(Color(hex: "#3a3a4a"))
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 10)
-            .background(Color.white)
-            .cornerRadius(20)
-            .shadow(color: Color.black.opacity(0.08), radius: 6, x: 0, y: 2)
-        }
-        .padding(.bottom, 32)
-    }
 }
 
 #Preview {

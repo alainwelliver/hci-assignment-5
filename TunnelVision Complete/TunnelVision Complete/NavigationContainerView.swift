@@ -34,7 +34,7 @@ struct NavigationContainerView: View {
                 .foregroundColor(Color(hex: "#1a1a2e"))
                 .padding(.top, 28)
 
-            VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: 10) {
                 ForEach(Array(currentRoute.enumerated()), id: \.offset) { index, step in
                     HStack(alignment: .top, spacing: 16) {
                         VStack(spacing: 0) {
@@ -47,24 +47,14 @@ struct NavigationContainerView: View {
                                 Rectangle()
                                     .fill(Color(hex: "#f31260"))
                                     .frame(width: 2)
-                                    .frame(minHeight: 40)
+                                    .frame(minHeight: 60)
                             }
                         }
 
                         VStack(alignment: .leading, spacing: 4) {
-                            if index == 1 {
-                                Text(step.instruction)
-                                    .font(.system(size: 12, weight: .bold))
-                                    .foregroundColor(.white)
-                                    .padding(.horizontal, 10)
-                                    .padding(.vertical, 4)
-                                    .background(Color(hex: "#006FEE"))
-                                    .cornerRadius(12)
-                            } else {
-                                Text(step.instruction)
-                                    .font(.system(size: 14, weight: .bold))
-                                    .foregroundColor(Color(hex: "#1a1a2e"))
-                            }
+                            Text(step.instruction)
+                                .font(.system(size: 14, weight: index == 1 ? .semibold : .bold))
+                                .foregroundColor(index == 1 ? Color(hex: "#444455") : Color(hex: "#1a1a2e"))
 
                             if let subtitle = step.subtitle {
                                 Text(subtitle)

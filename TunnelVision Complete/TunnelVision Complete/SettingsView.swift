@@ -3,6 +3,8 @@ import SwiftUI
 struct SettingsView: View {
     @AppStorage("useMetricUnits") private var useMetric = true
     @AppStorage("hapticFeedbackEnabled") private var hapticEnabled = true
+    @AppStorage("showStepCounter") private var showStepCounter = false
+    @AppStorage("showNextTrainBanner") private var showNextTrainBanner = false
 
     var body: some View {
         NavigationStack {
@@ -26,11 +28,15 @@ struct SettingsView: View {
                 }
 
                 Section("Navigation") {
-                    Label("Default to AR Mode", systemImage: "arkit")
                     Toggle(isOn: $hapticEnabled) {
                         Label("Haptic Feedback", systemImage: "iphone.radiowaves.left.and.right")
                     }
-                    Label("Step Counter Display", systemImage: "figure.walk")
+                    .onChange(of: hapticEnabled) { _, newValue in
+                        if newValue { Haptics.shared.impact(.medium) }
+                    }
+                    Toggle(isOn: $showStepCounter) {
+                        Label("Step Counter Display", systemImage: "figure.walk")
+                    }
                     Toggle(isOn: $useMetric) {
                         Label("Use Metric Units", systemImage: "ruler")
                     }
@@ -46,8 +52,9 @@ struct SettingsView: View {
                 }
 
                 Section("Transit") {
-                    Label("Train Line Alerts", systemImage: "bell")
-                    Label("Missed Train Notifications", systemImage: "exclamationmark.triangle")
+                    Toggle(isOn: $showNextTrainBanner) {
+                        Label("Next Train Banner", systemImage: "tram.fill")
+                    }
                 }
 
                 Section("About") {
@@ -55,12 +62,6 @@ struct SettingsView: View {
                         Text("Version")
                         Spacer()
                         Text("1.0.0")
-                            .foregroundColor(.secondary)
-                    }
-                    HStack {
-                        Text("HCI Assignment 5")
-                        Spacer()
-                        Text("Spring 2026")
                             .foregroundColor(.secondary)
                     }
                 }

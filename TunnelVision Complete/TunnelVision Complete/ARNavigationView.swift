@@ -10,6 +10,8 @@ struct ARNavigationView: View {
     @EnvironmentObject var navigationVM: NavigationViewModel
     @EnvironmentObject var transitVM: TransitViewModel
     @AppStorage("useMetricUnits") private var useMetric = true
+    @AppStorage("showStepCounter") private var showStepCounter = false
+    @AppStorage("showNextTrainBanner") private var showNextTrainBanner = false
 
     @StateObject private var arTracker = ARPositionTracker()
     @StateObject private var motion = DeviceMotionOverlay()
@@ -36,6 +38,9 @@ struct ARNavigationView: View {
         .animation(.easeInOut(duration: 0.3), value: routeNav.isWrongDirection)
         .onAppear {
             routeNav.navigationViewModel = navigationVM
+            if let route = navigationVM.activeRoute {
+                routeNav.configure(with: route)
+            }
             arTracker.start()
             motion.start()
             routeNav.start(tracker: arTracker)
@@ -116,14 +121,46 @@ struct ARNavigationView: View {
                             .fill(Color.red.opacity(0.12))
                     )
                 }
+
                 Spacer()
+
+                Menu {
+                    Section("Need help getting back on track?") {
+                        Button {
+                            navigationVM.previousStep()
+                        } label: {
+                            Label("Go back one step", systemImage: "arrow.uturn.backward")
+                        }
+                        Button(role: .destructive) {
+                            navigationVM.startNavigation()
+                        } label: {
+                            Label("Restart from the beginning", systemImage: "arrow.counterclockwise")
+                        }
+                    }
+                } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                        Text("Lost?")
+                            .fontWeight(.medium)
+                    }
+                    .font(.system(size: 15))
+                    .foregroundStyle(warningOrange)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
+                    .background(
+                        Capsule()
+                            .fill(warningOrange.opacity(0.18))
+                    )
+                }
             }
             .padding(.horizontal, 16)
             .padding(.top, 12)
 
-            trainBanner
-                .padding(.horizontal, 16)
-                .padding(.top, 8)
+            if showNextTrainBanner {
+                trainBanner
+                    .padding(.horizontal, 16)
+                    .padding(.top, 8)
+            }
 
             Spacer(minLength: 0)
 
@@ -160,19 +197,29 @@ struct ARNavigationView: View {
     private var trainBanner: some View {
         HStack(spacing: 8) {
             if let nextTrain = transitVM.nextTrains.first {
-                Text("Next")
-                    .font(.subheadline.weight(.medium))
+                if transitVM.dataSource == .schedule {
+                    Text("The next")
+                        .font(.subheadline.weight(.medium))
 
-                routeBadge(size: 28, font: .headline.weight(.bold))
+                    routeBadge(size: 28, font: .headline.weight(.bold))
 
-                if nextTrain.isDelayed {
-                    Text("delayed · \(nextTrain.timeRemainingString(from: transitVM.currentTime))")
+                    Text("train is scheduled in \(scheduledMinutes(for: nextTrain)) min")
                         .font(.subheadline)
-                        .foregroundStyle(Color(hex: "#f5a524"))
                 } else {
-                    Text("train arriving in \(nextTrain.timeRemainingString(from: transitVM.currentTime))")
-                        .font(.subheadline)
-                        .foregroundStyle(tunnelGreen)
+                    Text("Next")
+                        .font(.subheadline.weight(.medium))
+
+                    routeBadge(size: 28, font: .headline.weight(.bold))
+
+                    if nextTrain.isDelayed {
+                        Text("delayed · \(nextTrain.timeRemainingString(from: transitVM.currentTime))")
+                            .font(.subheadline)
+                            .foregroundStyle(Color(hex: "#f5a524"))
+                    } else {
+                        Text("train arriving in \(nextTrain.timeRemainingString(from: transitVM.currentTime))")
+                            .font(.subheadline)
+                            .foregroundStyle(tunnelGreen)
+                    }
                 }
             } else {
                 inlineRouteText(transitVM.emptyStateMessage,
@@ -187,52 +234,23 @@ struct ARNavigationView: View {
     }
 
     private var directionCluster: some View {
-        VStack(spacing: 12) {
-            VStack(spacing: 12) {
-                Image(systemName: arrowSymbolName)
-                    .font(.system(size: 72, weight: .bold))
-                    .foregroundStyle(tunnelGreen)
-                    .shadow(color: tunnelGreen.opacity(0.45), radius: 12)
-                    .contentTransition(.symbolEffect(.replace))
-
-                Image(systemName: arrowTrailSymbolName)
-                    .font(.system(size: 36, weight: .semibold))
-                    .foregroundStyle(tunnelGreen.opacity(0.9))
-                    .contentTransition(.symbolEffect(.replace))
-            }
-            .offset(stabilizedOffset)
-            .rotationEffect(.degrees(routeNav.arrowRotationDegrees))
-            .animation(.easeOut(duration: 0.12), value: routeNav.arrowRotationDegrees)
-            .animation(.easeOut(duration: 0.1), value: motion.offset)
+        VStack(spacing: 48) {
+            DirectionArrowView(
+                direction: routeNav.currentDirection,
+                tint: tunnelGreen,
+                rotationDegrees: routeNav.arrowRotationDegrees,
+                stabilizedOffset: stabilizedOffset,
+                arrowShadow: true,
+                useFadingStackOpacity: false
+            )
+            .offset(y: -24)
 
             Text(routeNav.primaryInstruction)
                 .font(.title.weight(.bold))
                 .foregroundStyle(.white)
                 .shadow(color: .black.opacity(0.5), radius: 4, y: 2)
                 .animation(.easeOut(duration: 0.2), value: routeNav.primaryInstruction)
-        }
-    }
-
-    private var arrowSymbolName: String {
-        switch routeNav.currentDirection {
-        case .straight:   return "arrow.up"
-        case .bearLeft:   return "arrow.up.left"
-        case .bearRight:  return "arrow.up.right"
-        case .turnLeft:   return "arrow.turn.up.left"
-        case .turnRight:  return "arrow.turn.up.right"
-        case .upStairs:   return "arrow.up"
-        case .downStairs: return "arrow.down"
-        case .splitAhead: return "arrow.up"
-        }
-    }
-
-    private var arrowTrailSymbolName: String {
-        switch routeNav.currentDirection {
-        case .turnLeft:   return "arrow.turn.up.left"
-        case .turnRight:  return "arrow.turn.up.right"
-        case .bearLeft:   return "arrow.up.left"
-        case .bearRight:  return "arrow.up.right"
-        default:          return "chevron.up.2"
+                .offset(y: 32)
         }
     }
 
@@ -253,7 +271,9 @@ struct ARNavigationView: View {
         VStack(spacing: 8) {
             HStack(spacing: 16) {
                 Label(formattedDistance, systemImage: "ruler")
-                Label("\(navigationVM.stepsRemainingInLeg) steps left", systemImage: "shoeprints.fill")
+                if showStepCounter {
+                    Label("\(navigationVM.stepsRemainingInLeg) steps left", systemImage: "shoeprints.fill")
+                }
             }
             .font(.system(size: 15, weight: .medium))
             .foregroundStyle(tunnelGreen)
@@ -274,29 +294,24 @@ struct ARNavigationView: View {
 
     private var skipControls: some View {
         VStack(spacing: 6) {
-            HStack(spacing: 6) {
-                Text("Step \(navigationVM.currentStepIndex + 1) of \(navigationVM.activeWaypointCount)")
-                Text("|")
-                Text("Lost? Skip to a different step")
-            }
-            .font(.system(size: 12))
-            .foregroundStyle(.white.opacity(0.6))
+            Text("Look ahead or go back to a previous step")
+                .font(.system(size: 12))
+                .foregroundStyle(.white.opacity(0.6))
 
             HStack(spacing: 16) {
                 Button(action: { navigationVM.previousStep() }) {
-                    Text("Skip Back")
+                    Text("← Previous")
                         .font(.system(size: 17, weight: .semibold))
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 14)
-                        .foregroundStyle(tunnelGreen)
+                        .foregroundStyle(navigationVM.isFirstStep ? tunnelGreen.opacity(0.35) : tunnelGreen)
                         .background(Capsule().fill(Color.clear))
-                        .overlay(Capsule().strokeBorder(tunnelGreen, lineWidth: 2))
+                        .overlay(Capsule().strokeBorder(navigationVM.isFirstStep ? tunnelGreen.opacity(0.25) : tunnelGreen, lineWidth: 2))
                 }
-                .opacity(navigationVM.isFirstStep ? 0 : 1)
                 .disabled(navigationVM.isFirstStep)
 
                 Button(action: { navigationVM.nextStep() }) {
-                    Text(navigationVM.isLastStep ? "Arrived" : "Skip Ahead")
+                    Text(navigationVM.isLastStep ? "Arrived" : "Next →")
                         .font(.system(size: 17, weight: .semibold))
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 14)
@@ -317,6 +332,11 @@ struct ARNavigationView: View {
                 .font(font)
                 .foregroundStyle(.white)
         }
+    }
+
+    private func scheduledMinutes(for train: Train) -> Int {
+        let interval = train.arrivalTime.timeIntervalSince(transitVM.currentTime)
+        return max(1, Int((interval / 60).rounded()))
     }
 
     @ViewBuilder

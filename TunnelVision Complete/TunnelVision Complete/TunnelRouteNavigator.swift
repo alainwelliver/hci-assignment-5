@@ -36,7 +36,7 @@ private func bearingToWorldUnit(_ bearingDeg: Double) -> SIMD2<Float> {
     return SIMD2<Float>(sin(rad), -cos(rad))
 }
 
-// MARK: - Navigator (shared waypoints + ARKit visual odometry)
+// MARK: - Navigator (configurable per-route + ARKit visual odometry)
 
 @MainActor
 final class TunnelRouteNavigator: NSObject, ObservableObject {
@@ -57,10 +57,17 @@ final class TunnelRouteNavigator: NSObject, ObservableObject {
     // Sync to shared NavigationViewModel (owns pedometer + step index)
     weak var navigationViewModel: NavigationViewModel?
 
-    // Route geometry for AR arrow rotation
-    private let geoWaypoints: [CLLocationCoordinate2D]
-    private let legInstructions: [String]
+    // Route geometry for AR arrow rotation (set via configure)
+    private var geoWaypoints: [CLLocationCoordinate2D] = []
+    private var legInstructions: [String] = []
     private var legDistances: [Double] = []
+    private var routeWaypoints: [Waypoint] = []
+
+    // Per-leg cumulative bearing offset relative to the user's initial AR heading.
+    // Index 0 is always 0 (the first leg defines "forward"); subsequent entries
+    // accumulate +90 / -90 from the waypoint's turn direction.
+    private var legBearingOffsets: [Double] = []
+    private var initialHeadingDegrees: Double?
 
     private var distanceWalkedThisLeg: Double = 0
     private var deviceHeadingDegrees: Double?
@@ -68,19 +75,36 @@ final class TunnelRouteNavigator: NSObject, ObservableObject {
 
     private var stepObserver: AnyCancellable?
 
-    init(route: TunnelRoute = DemoRoutes.hciToElevators) {
-        self.geoWaypoints = route.waypoints
-        self.legInstructions = route.legInstructions
-        super.init()
-        precondition(geoWaypoints.count >= 2)
-        totalLegs = geoWaypoints.count - 1
+    func configure(with route: RouteDefinition) {
+        let tunnelRoute = route.tunnelRoute
+        self.geoWaypoints = tunnelRoute.waypoints
+        self.legInstructions = tunnelRoute.legInstructions
+        self.routeWaypoints = route.waypoints
+        self.totalLegs = max(0, geoWaypoints.count - 1)
         buildLegDistances()
+        buildLegBearingOffsets()
+    }
+
+    private func buildLegBearingOffsets() {
+        legBearingOffsets = []
+        var running: Double = 0
+        let activeCount = max(0, routeWaypoints.count - 1)
+        for i in 0 ..< activeCount {
+            switch routeWaypoints[i].direction {
+            case .turnRight, .bearRight: running += 90
+            case .turnLeft,  .bearLeft:  running -= 90
+            default: break
+            }
+            legBearingOffsets.append(running)
+        }
     }
 
     func start(tracker: ARPositionTracker) {
+        guard geoWaypoints.count >= 2 else { return }
         self.tracker = tracker
         arrived = false
         distanceWalkedThisLeg = 0
+        initialHeadingDegrees = nil
 
         syncFromViewModel()
         updateDistanceToWaypoint()
@@ -103,10 +127,14 @@ final class TunnelRouteNavigator: NSObject, ObservableObject {
         stepObserver?.cancel()
         stepObserver = nil
         tracker = nil
+        initialHeadingDegrees = nil
     }
 
     func updateDeviceHeadingDegrees(_ degrees: Double?) {
         deviceHeadingDegrees = degrees
+        if initialHeadingDegrees == nil, let degrees {
+            initialHeadingDegrees = degrees
+        }
         recomputeUI()
     }
 
@@ -117,7 +145,7 @@ final class TunnelRouteNavigator: NSObject, ObservableObject {
     // MARK: - Sync from NavigationViewModel
 
     private func syncFromViewModel() {
-        guard let vm = navigationViewModel else { return }
+        guard let vm = navigationViewModel, totalLegs > 0 else { return }
         let vmStep = vm.currentStepIndex
         let mapped = min(vmStep, totalLegs - 1)
         if mapped != currentLegIndex {
@@ -129,6 +157,7 @@ final class TunnelRouteNavigator: NSObject, ObservableObject {
     }
 
     private func handleViewModelStepChange(_ newIndex: Int) {
+        guard totalLegs > 0 else { return }
         let mapped = min(newIndex, totalLegs - 1)
         if mapped != currentLegIndex {
             currentLegIndex = mapped
@@ -165,7 +194,7 @@ final class TunnelRouteNavigator: NSObject, ObservableObject {
 
     private func buildLegDistances() {
         legDistances = []
-        for i in 0 ..< (geoWaypoints.count - 1) {
+        for i in 0 ..< max(0, geoWaypoints.count - 1) {
             legDistances.append(distanceMeters(from: geoWaypoints[i], to: geoWaypoints[i + 1]))
         }
     }
@@ -173,6 +202,17 @@ final class TunnelRouteNavigator: NSObject, ObservableObject {
     private func bearingToNextWaypoint() -> Double {
         guard currentLegIndex < geoWaypoints.count - 1 else { return 0 }
         return bearingDegrees(from: geoWaypoints[currentLegIndex], to: geoWaypoints[currentLegIndex + 1])
+    }
+
+    // Target compass bearing for the current leg, anchored to the user's
+    // initial heading on AR entry rather than the synthetic geo-route bearing.
+    private func currentTargetBearing() -> Double? {
+        guard let base = initialHeadingDegrees,
+              currentLegIndex < legBearingOffsets.count else { return nil }
+        var b = (base + legBearingOffsets[currentLegIndex])
+            .truncatingRemainder(dividingBy: 360)
+        if b < 0 { b += 360 }
+        return b
     }
 
     private func updateDistanceToWaypoint() {
@@ -209,15 +249,13 @@ final class TunnelRouteNavigator: NSObject, ObservableObject {
             return
         }
 
-        if currentLegIndex < sharedWaypoints.count {
-            currentDirection = sharedWaypoints[currentLegIndex].direction
+        if currentLegIndex < routeWaypoints.count {
+            currentDirection = routeWaypoints[currentLegIndex].direction
         } else {
             currentDirection = .straight
         }
 
-        let target = bearingToNextWaypoint()
-
-        if let h = deviceHeadingDegrees {
+        if let h = deviceHeadingDegrees, let target = currentTargetBearing() {
             let raw = shortestAngleDegrees(h, target)
             let wasWrongDirection = isWrongDirection
             if abs(raw) > 140 {
@@ -225,9 +263,8 @@ final class TunnelRouteNavigator: NSObject, ObservableObject {
             } else if abs(raw) < 120 {
                 isWrongDirection = false
             }
-            if !wasWrongDirection && isWrongDirection,
-               UserDefaults.standard.bool(forKey: "hapticFeedbackEnabled") {
-                UINotificationFeedbackGenerator().notificationOccurred(.error)
+            if !wasWrongDirection && isWrongDirection {
+                Haptics.shared.notify(.error)
             }
             var clamped = raw
             if clamped > 90 { clamped = 90 }

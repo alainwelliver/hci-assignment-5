@@ -15,6 +15,9 @@ final class NavigationViewModel: ObservableObject {
     // Pre-fill for SearchView when coming from landing "Starting from" button
     @Published var prefillStart: Station? = nil
 
+    // Signal SearchView to focus the FROM field (used when user taps "Change" on landing)
+    @Published var focusFromFieldOnAppear: Bool = false
+
     // Tab selection
     @Published var selectedTab: Int = 0
 
@@ -28,32 +31,70 @@ final class NavigationViewModel: ObservableObject {
     @Published var startStation: Station?
     @Published var destStation: Station?
 
+    // Active route definition resolved from start/dest pair
+    @Published var activeRoute: RouteDefinition?
+
     // Pedometer (single source of truth for both 2D and AR)
     @Published var stepCount: Int = 0
+
+    // Pedometer baseline at the start of the current leg, so "steps left"
+    // counts down per-leg even when AR auto-advances ahead of the pedometer.
+    @Published var stepCountAtLegStart: Int = 0
 
     private let pedometer = CMPedometer()
 
     private func fireDirectionHaptic() {
-        guard UserDefaults.standard.bool(forKey: "hapticFeedbackEnabled") else { return }
-        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        Haptics.shared.impact(.medium)
     }
 
-    var currentStep: NavStep { navSteps[currentStepIndex] }
-    var isFirstStep: Bool { currentStepIndex == 0 }
-    var isLastStep: Bool { currentStepIndex == navSteps.count - 1 }
+    // MARK: - Active route accessors
 
-    var currentWaypoint: Waypoint { sharedWaypoints[currentStepIndex] }
-    var activeWaypointCount: Int { sharedWaypoints.count - 1 }
+    private var activeWaypoints: [Waypoint] { activeRoute?.waypoints ?? [] }
+    private var activeNavSteps: [NavStep] { activeRoute?.navSteps ?? [] }
+
+    var currentStep: NavStep {
+        let steps = activeNavSteps
+        guard !steps.isEmpty else {
+            return NavStep(id: 0, direction: .straight, label: "", estimatedTimeRemaining: "", trainLine: "L", trainColor: "#2185D5", distanceMeters: 0)
+        }
+        let idx = min(max(0, currentStepIndex), steps.count - 1)
+        return steps[idx]
+    }
+
+    var isFirstStep: Bool { currentStepIndex == 0 }
+    var isLastStep: Bool { currentStepIndex >= max(0, activeNavSteps.count - 1) }
+
+    var currentWaypoint: Waypoint? {
+        let wps = activeWaypoints
+        guard !wps.isEmpty else { return nil }
+        let idx = min(max(0, currentStepIndex), wps.count - 1)
+        return wps[idx]
+    }
+
+    var activeWaypointCount: Int { activeRoute?.activeWaypointCount ?? 0 }
 
     var stepsRemainingInLeg: Int {
+        let wps = activeWaypoints
         let nextIndex = currentStepIndex + 1
-        guard nextIndex < sharedWaypoints.count else { return 0 }
-        return max(0, sharedWaypoints[nextIndex].stepThreshold - stepCount)
+        guard nextIndex < wps.count, currentStepIndex < wps.count else { return 0 }
+        let legTotal = max(0, wps[nextIndex].stepThreshold - wps[currentStepIndex].stepThreshold)
+        let stepsInLeg = max(0, stepCount - stepCountAtLegStart)
+        return max(0, legTotal - stepsInLeg)
     }
 
     // MARK: - Session lifecycle
 
+    private func resolveActiveRoute() {
+        if let start = startStation, let dest = destStation {
+            activeRoute = routeFor(origin: start.name, destination: dest.name)
+        } else {
+            activeRoute = nil
+        }
+    }
+
     func startNavigation() {
+        Haptics.shared.prepareAll()
+        resolveActiveRoute()
         showLanding = false
         showTripOverview = false
         isNavigating = true
@@ -61,27 +102,30 @@ final class NavigationViewModel: ObservableObject {
         currentStepIndex = 0
         arrived = false
         stepCount = 0
+        stepCountAtLegStart = 0
         selectedTab = 1
         startPedometer()
     }
 
     func startFromLanding(destination: Station) {
-        if destination.name == "AGH Ground Floor Elevators" {
-            startStation = demoStations.first { $0.name == "HCI Classroom" }
+        if let originName = originForDestination[destination.name] {
+            startStation = demoStations.first { $0.name == originName }
         } else {
-            startStation = demoStations.first { $0.name == "AGH Lobby" }
+            startStation = nil
         }
         destStation = destination
         prepareTrip()
     }
 
     func goToSearchFromLanding() {
-        prefillStart = demoStations.first { $0.name == "AGH Lobby" }
+        prefillStart = nil
+        focusFromFieldOnAppear = true
         showLanding = false
         selectedTab = 0
     }
 
     func prepareTrip() {
+        resolveActiveRoute()
         showLanding = false
         showTripOverview = true
         selectedTab = 1
@@ -95,8 +139,10 @@ final class NavigationViewModel: ObservableObject {
         currentStepIndex = 0
         arrived = false
         stepCount = 0
+        stepCountAtLegStart = 0
         startStation = nil
         destStation = nil
+        activeRoute = nil
         selectedTab = 0
         showLanding = true
     }
@@ -110,6 +156,7 @@ final class NavigationViewModel: ObservableObject {
             stopPedometer()
         } else {
             currentStepIndex += 1
+            stepCountAtLegStart = stepCount
             fireDirectionHaptic()
         }
     }
@@ -117,6 +164,7 @@ final class NavigationViewModel: ObservableObject {
     func previousStep() {
         if currentStepIndex > 0 {
             currentStepIndex -= 1
+            stepCountAtLegStart = stepCount
         }
     }
 
@@ -129,10 +177,15 @@ final class NavigationViewModel: ObservableObject {
     // MARK: - Called by TunnelRouteNavigator when AR auto-advances
 
     func syncStepFromAR(legIndex: Int, didArrive: Bool) {
-        let mapped = min(legIndex, navSteps.count - 1)
+        let steps = activeNavSteps
+        guard !steps.isEmpty else { return }
+        let mapped = min(legIndex, steps.count - 1)
         let changed = mapped != currentStepIndex
         currentStepIndex = mapped
-        if changed { fireDirectionHaptic() }
+        if changed {
+            stepCountAtLegStart = stepCount
+            fireDirectionHaptic()
+        }
         if didArrive {
             arrived = true
             stopPedometer()
@@ -143,17 +196,23 @@ final class NavigationViewModel: ObservableObject {
 
     private func checkStepThresholdAdvance() {
         guard isNavigating, !arrived else { return }
-        let nextIndex = currentStepIndex + 1
-        guard nextIndex < sharedWaypoints.count else { return }
+        let wps = activeWaypoints
+        let steps = activeNavSteps
+        guard !wps.isEmpty, !steps.isEmpty else { return }
 
-        if stepCount >= sharedWaypoints[nextIndex].stepThreshold {
-            if nextIndex >= sharedWaypoints.count - 1 {
-                currentStepIndex = navSteps.count - 1
+        let nextIndex = currentStepIndex + 1
+        guard nextIndex < wps.count else { return }
+
+        if stepCount >= wps[nextIndex].stepThreshold {
+            if nextIndex >= wps.count - 1 {
+                currentStepIndex = steps.count - 1
+                stepCountAtLegStart = stepCount
                 fireDirectionHaptic()
                 arrived = true
                 stopPedometer()
             } else {
                 currentStepIndex = nextIndex
+                stepCountAtLegStart = stepCount
                 fireDirectionHaptic()
                 checkStepThresholdAdvance()
             }

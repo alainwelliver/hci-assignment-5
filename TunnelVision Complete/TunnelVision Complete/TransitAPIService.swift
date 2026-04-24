@@ -5,17 +5,24 @@ enum TransitServiceError: LocalizedError {
     case invalidResponse
     case noRealtimeRouteData
     case noUpcomingArrivals
+    case scheduleUnavailable
 
     var errorDescription: String? {
         switch self {
-        case .invalidResponse:
-            return "SEPTA realtime response was invalid."
-        case .noRealtimeRouteData:
-            return "SEPTA realtime data for the L is temporarily unavailable."
-        case .noUpcomingArrivals:
-            return "No upcoming L trains reported right now."
+        case .invalidResponse, .noRealtimeRouteData, .noUpcomingArrivals, .scheduleUnavailable:
+            return "SEPTA realtime AND schedule data for the L is temporarily unavailable."
         }
     }
+}
+
+enum TransitDataSource {
+    case realtime
+    case schedule
+}
+
+struct TrainsResult {
+    let trains: [Train]
+    let source: TransitDataSource
 }
 
 struct MFLStationStop {
@@ -38,25 +45,44 @@ final class TransitAPIService {
     }()
 
     private let locationProvider = RealtimeLocationProvider()
+    private let scheduleService: MFLScheduleService
 
-    func fetchNextTrains(now: Date = Date()) async throws -> [Train] {
+    init(scheduleService: MFLScheduleService = .shared) {
+        self.scheduleService = scheduleService
+    }
+
+    /// Returns the next L trains plus an indicator of whether the data came from
+    /// SEPTA's GTFS-realtime feed or the bundled GTFS-static schedule fallback.
+    /// Throws `TransitServiceError.scheduleUnavailable` only when both sources fail.
+    func fetchNextTrainsResult(now: Date = Date()) async throws -> TrainsResult {
         let nearestStop = await resolveNearestStop()
+
+        if let realtimeTrains = try? await fetchRealtimeTrains(nearestStop: nearestStop, now: now),
+           !realtimeTrains.isEmpty {
+            return TrainsResult(trains: realtimeTrains, source: .realtime)
+        }
+
+        if let scheduled = scheduleService.nextScheduledTrain(forStopID: nearestStop.stopID, now: now) {
+            return TrainsResult(trains: [scheduled], source: .schedule)
+        }
+        if let scheduled = scheduleService.nextScheduledTrain(forStopID: fallbackStopID, now: now) {
+            return TrainsResult(trains: [scheduled], source: .schedule)
+        }
+
+        throw TransitServiceError.scheduleUnavailable
+    }
+
+    private func fetchRealtimeTrains(nearestStop: MFLStationStop, now: Date) async throws -> [Train] {
         let text = try await fetchRealtimeTripText()
         guard text.contains("route_id: \"\(mflRouteID)\"") else {
             throw TransitServiceError.noRealtimeRouteData
         }
-
-        let trains = parseMFLArrivals(
+        return parseMFLArrivals(
             from: text,
             matchingStopID: nearestStop.stopID,
             fallbackStopID: fallbackStopID,
             now: now
         )
-
-        guard !trains.isEmpty else {
-            throw TransitServiceError.noUpcomingArrivals
-        }
-        return trains
     }
 
     private func resolveNearestStop() async -> MFLStationStop {
