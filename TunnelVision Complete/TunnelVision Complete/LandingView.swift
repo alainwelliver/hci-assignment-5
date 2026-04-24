@@ -31,13 +31,13 @@ struct LandingView: View {
                 searchBarSection
                     .padding(.top, isSearchFocused ? 60 : 28)
 
-                manualRouteCTA
-                    .padding(.top, 14)
-
                 if isSearchFocused {
                     searchResultsList
                         .transition(.opacity.combined(with: .move(edge: .bottom)))
                 }
+
+                manualRouteCTA
+                    .padding(.top, 14)
 
                 Spacer()
             }

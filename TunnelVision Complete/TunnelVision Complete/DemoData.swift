@@ -13,6 +13,7 @@ let demoStations = [
     Station(name: "2nd Floor Computer Systems Lab"),
     Station(name: "AGH Ground Floor Elevators"),
     Station(name: "2nd Floor Bathrooms"),
+    Station(name: "AGH Front Entrance"),
 ]
 
 let originStationNames: Set<String> = [
@@ -23,12 +24,14 @@ let originStationNames: Set<String> = [
 let destinationStationNames: Set<String> = [
     "AGH Ground Floor Elevators",
     "2nd Floor Bathrooms",
+    "AGH Front Entrance",
 ]
 
 // Each destination is reached from a single fixed origin in this demo.
 let originForDestination: [String: String] = [
     "AGH Ground Floor Elevators": "HCI Classroom",
     "2nd Floor Bathrooms": "2nd Floor Computer Systems Lab",
+    "AGH Front Entrance": "HCI Classroom",
 ]
 
 // MARK: - Route Definition
@@ -71,9 +74,22 @@ let labToBathroomsRoute = RouteDefinition(
     ]
 )
 
+let hciToFrontEntranceRoute = RouteDefinition(
+    originName: "HCI Classroom",
+    destinationName: "AGH Front Entrance",
+    waypoints: [
+        Waypoint(id: 1, name: "Start: HCI Classroom",         instruction: "Walk straight toward the door",         direction: .straight,  stepThreshold: 0),
+        Waypoint(id: 2, name: "Classroom Door",               instruction: "Turn right and walk down the hallway",  direction: .turnRight, stepThreshold: 10),
+        Waypoint(id: 3, name: "Hallway Junction",             instruction: "Turn left toward the security desk",    direction: .turnLeft,  stepThreshold: 40),
+        Waypoint(id: 4, name: "Security Desk",                instruction: "Turn right toward the front entrance",  direction: .turnRight, stepThreshold: 50),
+        Waypoint(id: 5, name: "Arrived: AGH Front Entrance",  instruction: "You have arrived.",                     direction: .straight,  stepThreshold: 55),
+    ]
+)
+
 let allRoutes: [RouteDefinition] = [
     hciToElevatorsRoute,
     labToBathroomsRoute,
+    hciToFrontEntranceRoute,
 ]
 
 func routeFor(origin: String, destination: String) -> RouteDefinition? {
