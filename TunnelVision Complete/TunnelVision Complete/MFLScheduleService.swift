@@ -1,3 +1,5 @@
+// AI Attribution: Generated with Claude Opus 4.6
+
 import Foundation
 
 /// Loads the bundled GTFS-static schedule for SEPTA's Market-Frankford Line ("L1")

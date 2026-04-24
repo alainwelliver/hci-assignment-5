@@ -1,3 +1,5 @@
+// AI Attribution: Generated with Claude Opus 4.6
+
 #if os(iOS)
 import Combine
 import CoreLocation
@@ -63,11 +65,12 @@ final class TunnelRouteNavigator: NSObject, ObservableObject {
     private var legDistances: [Double] = []
     private var routeWaypoints: [Waypoint] = []
 
-    // Per-leg cumulative bearing offset relative to the user's initial AR heading.
-    // Index 0 is always 0 (the first leg defines "forward"); subsequent entries
-    // accumulate +90 / -90 from the waypoint's turn direction.
-    private var legBearingOffsets: [Double] = []
-    private var initialHeadingDegrees: Double?
+    // Heading axis used as the rotation reference for the *current* leg. We
+    // snap this to the user's physical heading each time a leg advances, so
+    // every new leg treats "forward" as wherever the user is now pointing
+    // (i.e. the relative axis the user just walked into after their last
+    // turn), rather than a fixed initial compass bearing.
+    private var currentAxisHeadingDegrees: Double?
 
     private var distanceWalkedThisLeg: Double = 0
     private var deviceHeadingDegrees: Double?
@@ -82,21 +85,6 @@ final class TunnelRouteNavigator: NSObject, ObservableObject {
         self.routeWaypoints = route.waypoints
         self.totalLegs = max(0, geoWaypoints.count - 1)
         buildLegDistances()
-        buildLegBearingOffsets()
-    }
-
-    private func buildLegBearingOffsets() {
-        legBearingOffsets = []
-        var running: Double = 0
-        let activeCount = max(0, routeWaypoints.count - 1)
-        for i in 0 ..< activeCount {
-            switch routeWaypoints[i].direction {
-            case .turnRight, .bearRight: running += 90
-            case .turnLeft,  .bearLeft:  running -= 90
-            default: break
-            }
-            legBearingOffsets.append(running)
-        }
     }
 
     func start(tracker: ARPositionTracker) {
@@ -104,7 +92,7 @@ final class TunnelRouteNavigator: NSObject, ObservableObject {
         self.tracker = tracker
         arrived = false
         distanceWalkedThisLeg = 0
-        initialHeadingDegrees = nil
+        currentAxisHeadingDegrees = nil
 
         syncFromViewModel()
         updateDistanceToWaypoint()
@@ -127,15 +115,21 @@ final class TunnelRouteNavigator: NSObject, ObservableObject {
         stepObserver?.cancel()
         stepObserver = nil
         tracker = nil
-        initialHeadingDegrees = nil
+        currentAxisHeadingDegrees = nil
     }
 
     func updateDeviceHeadingDegrees(_ degrees: Double?) {
         deviceHeadingDegrees = degrees
-        if initialHeadingDegrees == nil, let degrees {
-            initialHeadingDegrees = degrees
+        if currentAxisHeadingDegrees == nil, let degrees {
+            currentAxisHeadingDegrees = degrees
         }
         recomputeUI()
+    }
+
+    private func refreshAxisToCurrentHeading() {
+        if let heading = deviceHeadingDegrees {
+            currentAxisHeadingDegrees = heading
+        }
     }
 
     var sessionSteps: Int {
@@ -152,6 +146,7 @@ final class TunnelRouteNavigator: NSObject, ObservableObject {
             currentLegIndex = mapped
             distanceWalkedThisLeg = 0
             updateDistanceToWaypoint()
+            refreshAxisToCurrentHeading()
         }
         arrived = vm.arrived
     }
@@ -163,6 +158,7 @@ final class TunnelRouteNavigator: NSObject, ObservableObject {
             currentLegIndex = mapped
             distanceWalkedThisLeg = 0
             updateDistanceToWaypoint()
+            refreshAxisToCurrentHeading()
         }
         if let vm = navigationViewModel, vm.arrived {
             arrived = true
@@ -204,15 +200,12 @@ final class TunnelRouteNavigator: NSObject, ObservableObject {
         return bearingDegrees(from: geoWaypoints[currentLegIndex], to: geoWaypoints[currentLegIndex + 1])
     }
 
-    // Target compass bearing for the current leg, anchored to the user's
-    // initial heading on AR entry rather than the synthetic geo-route bearing.
+    // Target compass bearing for the current leg. We use the heading the user
+    // had when this leg began, so each turn waypoint spawns the arrow in its
+    // natural orientation relative to the axis the user is currently walking,
+    // and subsequent physical rotation is what drives the arrow to follow.
     private func currentTargetBearing() -> Double? {
-        guard let base = initialHeadingDegrees,
-              currentLegIndex < legBearingOffsets.count else { return nil }
-        var b = (base + legBearingOffsets[currentLegIndex])
-            .truncatingRemainder(dividingBy: 360)
-        if b < 0 { b += 360 }
-        return b
+        currentAxisHeadingDegrees
     }
 
     private func updateDistanceToWaypoint() {
@@ -228,6 +221,7 @@ final class TunnelRouteNavigator: NSObject, ObservableObject {
             let overshoot = distanceWalkedThisLeg - legDistances[currentLegIndex]
             currentLegIndex += 1
             distanceWalkedThisLeg = max(0, overshoot)
+            refreshAxisToCurrentHeading()
         }
         if currentLegIndex >= geoWaypoints.count - 1 {
             arrived = true

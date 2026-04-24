@@ -1,3 +1,5 @@
+// AI Attribution: Generated with Claude Opus 4.6
+
 #if os(iOS)
 import ARKit
 import SwiftUI

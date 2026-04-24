@@ -1,3 +1,5 @@
+// AI Attribution: Generated with Claude Opus 4.6
+
 import SwiftUI
 
 /// Triple-stack direction arrows (matches 2D: three identical glyphs, fading opacity).
