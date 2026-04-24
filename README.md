@@ -8,9 +8,7 @@ By Alain, Tomas, and Ben. Built for Penn's CIS 4120: HCI course.
 * Build and run (play button). When prompted, allow **Camera** and **Motion** access.
 * Tunnel safely!!
 
-## Assignment 5-related instructions:
-
-## Where to find/run each technical implementation prototype:
+## Where to find/run each technical implementation prototype (for A5)
 First navigate to the `requirements` folder.
 
 ### Technical Requirement 1: "Hello World" App
