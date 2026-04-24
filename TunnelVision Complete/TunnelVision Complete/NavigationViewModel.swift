@@ -44,6 +44,12 @@ final class NavigationViewModel: ObservableObject {
 
     private let pedometer = CMPedometer()
 
+    // Throttle for pedometer-driven auto-advance. Guarantees each instruction
+    // gets a render pass before the next one can fire, even if CMPedometer
+    // delivers a batched update that crosses multiple step thresholds at once.
+    private var lastAdvanceAt: Date?
+    private let minStepDwell: TimeInterval = 1.5
+
     private func fireDirectionHaptic() {
         Haptics.shared.impact(.medium)
     }
@@ -102,6 +108,7 @@ final class NavigationViewModel: ObservableObject {
         arrived = false
         stepCount = 0
         stepCountAtLegStart = 0
+        lastAdvanceAt = nil
         selectedTab = 1
         startPedometer()
     }
@@ -141,6 +148,7 @@ final class NavigationViewModel: ObservableObject {
         arrived = false
         stepCount = 0
         stepCountAtLegStart = 0
+        lastAdvanceAt = nil
         startStation = nil
         destStation = nil
         activeRoute = nil
@@ -207,18 +215,25 @@ final class NavigationViewModel: ObservableObject {
         let nextIndex = currentStepIndex + 1
         guard nextIndex < wps.count else { return }
 
+        // Don't collapse two transitions into one render frame when a batched
+        // CMPedometer update crosses multiple thresholds at once.
+        if let last = lastAdvanceAt, Date().timeIntervalSince(last) < minStepDwell {
+            return
+        }
+
         if stepCount >= wps[nextIndex].stepThreshold {
             if nextIndex >= wps.count - 1 {
                 currentStepIndex = steps.count - 1
                 stepCountAtLegStart = stepCount
+                lastAdvanceAt = Date()
                 fireDirectionHaptic()
                 arrived = true
                 stopPedometer()
             } else {
                 currentStepIndex = nextIndex
                 stepCountAtLegStart = stepCount
+                lastAdvanceAt = Date()
                 fireDirectionHaptic()
-                checkStepThresholdAdvance()
             }
         }
     }
