@@ -33,7 +33,7 @@ final class PedometerViewModel: ObservableObject {
 
     /// Multiplier applied to steps counted while in AR mode to compensate
     /// for reduced pedometer accuracy when the phone is held upright.
-    private let arMultiplier: Double = 1.5
+    private let arMultiplier: Double = 1.3
 
     /// Raw pedometer value at the moment the user last switched modes.
     private var rawStepsAtModeSwitch: Int = 0
