@@ -208,6 +208,10 @@ struct SearchView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal)
 
+                if options.isEmpty {
+                    routeUnavailableCard(start: start, dest: dest)
+                }
+
                 ForEach(options) { option in
                     routeOptionCard(option: option)
                 }
@@ -326,6 +330,38 @@ struct SearchView: View {
         .buttonStyle(.plain)
         .disabled(!isEnabled)
         .animation(.easeInOut(duration: 0.2), value: isSelected)
+    }
+
+    // MARK: - Route Unavailable
+
+    private func routeUnavailableCard(start: String, dest: String) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 10) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundColor(Color(hex: "#f5a524"))
+                    .font(.system(size: 18))
+                Text("Route not available in demo")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(Color(hex: "#1a1a2e"))
+                Spacer()
+            }
+            Text("This prototype doesn't have a mapped route from “\(start)” to “\(dest)” yet. Try a different pairing to see the demo.")
+                .font(.system(size: 13))
+                .foregroundColor(Color(hex: "#555566"))
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 14)
+                .fill(Color.white)
+                .shadow(color: Color.black.opacity(0.05), radius: 6, x: 0, y: 3)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 14)
+                .stroke(Color(hex: "#f5a524").opacity(0.4), lineWidth: 1)
+        )
+        .padding(.horizontal)
     }
 
     // MARK: - Begin Navigation
