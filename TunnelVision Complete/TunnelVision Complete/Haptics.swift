@@ -29,18 +29,21 @@ final class Haptics {
     func impact(_ style: UIImpactFeedbackGenerator.FeedbackStyle = .medium) {
         guard enabled else { return }
         let gen = (style == .light) ? lightImpact : mediumImpact
-        gen.impactOccurred()
+        gen.prepare()
+        gen.impactOccurred(intensity: 1.0)
         gen.prepare()
     }
 
     func notify(_ type: UINotificationFeedbackGenerator.FeedbackType) {
         guard enabled else { return }
+        notification.prepare()
         notification.notificationOccurred(type)
         notification.prepare()
     }
 
     func selectionChanged() {
         guard enabled else { return }
+        selection.prepare()
         selection.selectionChanged()
         selection.prepare()
     }
