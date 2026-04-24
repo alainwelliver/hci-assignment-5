@@ -10,20 +10,32 @@ struct TrainArrivalPill: View {
         } else {
             HStack(spacing: 6) {
                 if let nextTrain = transitVM.nextTrains.first {
-                    Text("Next")
-                        .font(.system(size: 15))
-                        .foregroundColor(.primary)
-
-                    routeBadge(size: 26, fontSize: 13)
-
-                    if nextTrain.isDelayed {
-                        Text("delayed · \(nextTrain.timeRemainingString(from: transitVM.currentTime))")
+                    if transitVM.dataSource == .schedule {
+                        Text("The next")
                             .font(.system(size: 15))
-                            .foregroundColor(Color(hex: "#f5a524"))
+                            .foregroundColor(.primary)
+
+                        routeBadge(size: 26, fontSize: 13)
+
+                        Text("train is scheduled in \(scheduledMinutes(for: nextTrain)) min")
+                            .font(.system(size: 15))
+                            .foregroundColor(.primary)
                     } else {
-                        Text("train arriving in \(nextTrain.timeRemainingString(from: transitVM.currentTime))")
+                        Text("Next")
                             .font(.system(size: 15))
-                            .foregroundColor(Color(hex: "#17c964"))
+                            .foregroundColor(.primary)
+
+                        routeBadge(size: 26, fontSize: 13)
+
+                        if nextTrain.isDelayed {
+                            Text("delayed · \(nextTrain.timeRemainingString(from: transitVM.currentTime))")
+                                .font(.system(size: 15))
+                                .foregroundColor(Color(hex: "#f5a524"))
+                        } else {
+                            Text("train arriving in \(nextTrain.timeRemainingString(from: transitVM.currentTime))")
+                                .font(.system(size: 15))
+                                .foregroundColor(Color(hex: "#17c964"))
+                        }
                     }
                 } else {
                     inlineRouteText(transitVM.emptyStateMessage,
@@ -39,6 +51,11 @@ struct TrainArrivalPill: View {
                     .shadow(color: .black.opacity(0.12), radius: 6, x: 0, y: 2)
             )
         }
+    }
+
+    private func scheduledMinutes(for train: Train) -> Int {
+        let interval = train.arrivalTime.timeIntervalSince(transitVM.currentTime)
+        return max(1, Int((interval / 60).rounded()))
     }
 
     private func routeBadge(size: CGFloat, fontSize: CGFloat) -> some View {

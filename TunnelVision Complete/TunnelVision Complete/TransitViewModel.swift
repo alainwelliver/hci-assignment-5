@@ -7,6 +7,7 @@ class TransitViewModel: ObservableObject {
     @Published var isLoading = true
     @Published var currentTime = Date()
     @Published var statusMessage: String?
+    @Published var dataSource: TransitDataSource = .realtime
 
     private let apiService = TransitAPIService()
     private var timer: Timer?
@@ -33,16 +34,15 @@ class TransitViewModel: ObservableObject {
         }
 
         do {
-            let trains = try await apiService.fetchNextTrains(now: Date())
-            nextTrains = trains.sorted(by: { $0.arrivalTime < $1.arrivalTime })
+            let result = try await apiService.fetchNextTrainsResult(now: Date())
+            nextTrains = result.trains.sorted(by: { $0.arrivalTime < $1.arrivalTime })
+            dataSource = result.source
             statusMessage = nil
             lastSuccessfulRefresh = Date()
-        } catch let error as TransitServiceError {
-            nextTrains = []
-            statusMessage = error.errorDescription
         } catch {
             nextTrains = []
-            statusMessage = "Realtime ETAs unavailable right now."
+            dataSource = .realtime
+            statusMessage = "SEPTA realtime AND schedule data for the L is temporarily unavailable."
         }
 
         isLoading = false
